@@ -55,13 +55,25 @@ function AdminPage() {
 
   const addToRoster = async (userId: string) => {
     const maxPos = roster.reduce((m, r) => Math.max(m, r.position), -1);
-    await supabase.from("roster_members").insert({ user_id: userId, position: maxPos + 1, active: true });
-    await load();
+    const { error } = await supabase.from("roster_members").insert({ user_id: userId, position: maxPos + 1, active: true });
+    
+    if (error) {
+      setMsg(error.message);
+    } else {
+      setMsg(null);
+      await load();
+    }
   };
 
   const removeFromRoster = async (id: string) => {
-    await supabase.from("roster_members").delete().eq("id", id);
-    await load();
+    const { error } = await supabase.from("roster_members").delete().eq("id", id);
+    
+    if (error) {
+      setMsg(error.message);
+    } else {
+      setMsg(null);
+      await load();
+    }
   };
 
   const move = async (idx: number, dir: -1 | 1) => {
@@ -69,11 +81,41 @@ function AdminPage() {
     if (j < 0 || j >= roster.length) return;
     const a = roster[idx];
     const b = roster[j];
-    // Swap positions via 3-step (unique constraint not present, but be safe)
-    await supabase.from("roster_members").update({ position: -1 }).eq("id", a.id);
-    await supabase.from("roster_members").update({ position: a.position }).eq("id", b.id);
-    await supabase.from("roster_members").update({ position: b.position }).eq("id", a.id);
-    await load();
+    
+    try {
+      // Swap positions via 3-step
+      const { error: e1 } = await supabase.from("roster_members").update({ position: -1 }).eq("id", a.id);
+      if (e1) throw e1;
+      
+      const { error: e2 } = await supabase.from("roster_members").update({ position: a.position }).eq("id", b.id);
+      if (e2) throw e2;
+      
+      const { error: e3 } = await supabase.from("roster_members").update({ position: b.position }).eq("id", a.id);
+      if (e3) throw e3;
+      
+      setMsg(null);
+      await load();
+    } catch (error: any) {
+      setMsg(error.message);
+    }
+  };
+
+  const setRole = async (userId: string, role: "admin" | "user") => {
+    let err;
+    if (role === "admin") {
+      const { error } = await supabase.from("user_roles").insert({ user_id: userId, role: "admin" });
+      err = error;
+    } else {
+      const { error } = await supabase.from("user_roles").delete().eq("user_id", userId).eq("role", "admin");
+      err = error;
+    }
+    
+    if (err) {
+      setMsg(err.message);
+    } else {
+      setMsg(null);
+      await load();
+    }
   };
 
   const regenerate = async () => {
@@ -87,15 +129,6 @@ function AdminPage() {
     } finally {
       setBusy(false);
     }
-  };
-
-  const setRole = async (userId: string, role: "admin" | "user") => {
-    if (role === "admin") {
-      await supabase.from("user_roles").insert({ user_id: userId, role: "admin" });
-    } else {
-      await supabase.from("user_roles").delete().eq("user_id", userId).eq("role", "admin");
-    }
-    await load();
   };
 
   const respondBuyout = async (id: string, accept: boolean) => {
