@@ -165,7 +165,7 @@ export function I18nProvider({ children }: { children: ReactNode }) {
     setLangState(l);
     if (typeof window !== "undefined") localStorage.setItem("lang", l);
   };
-  return <Ctx.Provider value={{ lang, setLang, t: dict[lang] }}>{children}</Ctx.Provider>;
+  return <Ctx.Provider value={{ lang, setLang, t: dict[lang] as Dict }}>{children}</Ctx.Provider>;
 }
 
 export function useI18n() {
