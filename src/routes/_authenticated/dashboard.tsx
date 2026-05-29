@@ -16,11 +16,12 @@ export const Route = createFileRoute("/_authenticated/dashboard")({
   component: Dashboard,
 });
 
-type Assignment = { date: string; user_id: string };
+type Assignment = { date: string; user_id: string; note?: string | null };
 type Profile = { id: string; display_name: string };
 
 function Dashboard() {
-  const { user, profile, isAdmin } = useAuth();  const { t, lang } = useI18n();
+  const { user, profile, isAdmin } = useAuth();
+  const { t, lang } = useI18n();
   const [monthAnchor, setMonthAnchor] = useState(() => new Date());
   const [assignments, setAssignments] = useState<Assignment[]>([]);
   const [profiles, setProfiles] = useState<Profile[]>([]);
@@ -29,6 +30,10 @@ function Dashboard() {
   const [mySwapRequests, setMySwapRequests] = useState<any[]>([]);
   const [incomingSwaps, setIncomingSwaps] = useState<any[]>([]);
   const [info, setInfo] = useState<string | null>(null);
+  
+  // Stany dla notatek
+  const [noteInput, setNoteInput] = useState("");
+  const [activeNotePopup, setActiveNotePopup] = useState<{ date: string; note: string } | null>(null);
 
   const grid = useMemo(() => buildCalendarGrid(monthAnchor), [monthAnchor]);
   const rangeStart = grid[0];
@@ -38,7 +43,7 @@ function Dashboard() {
     const [{ data: assigns }, { data: profs }, { data: outgoing }, { data: incoming }] = await Promise.all([
       supabase
         .from("assignments")
-        .select("date,user_id")
+        .select("date,user_id,note") 
         .gte("date", toISODate(rangeStart))
         .lte("date", toISODate(rangeEnd)),
       supabase.from("profiles").select("id, display_name"),
@@ -74,6 +79,14 @@ function Dashboard() {
       .slice(0, 8);
   }, [assignments, user]);
 
+  // Efekt sprawdzający notatki po załadowaniu dyżurów
+useEffect(() => {
+    const shiftWithNote = myUpcoming.find((s) => s.note && s.note.trim() !== "");
+    if (shiftWithNote) {
+      setActiveNotePopup({ date: shiftWithNote.date, note: shiftWithNote.note as string });
+    }
+  }, [myUpcoming]);
+
   const handleDayClick = (d: Date) => {
     const iso = toISODate(d);
     if (pickingSwapFor) {
@@ -100,6 +113,8 @@ function Dashboard() {
       return;
     }
     setSelectedDate(iso);
+    const currentAssign = assignments.find((a) => a.date === iso);
+    setNoteInput(currentAssign?.note || "");
   };
 
   const selectedAssignee = selectedDate ? assignMap.get(selectedDate) : undefined;
@@ -131,7 +146,10 @@ function Dashboard() {
     }
     await supabase
       .from("swap_requests")
-      .update({ status: accept ? "accepted" : "rejected", resolved_at: new Date().toISOString() })
+      .update({ 
+        status: accept ? "accepted" : "rejected", 
+        resolved_at: new Date().toISOString() 
+      })
       .eq("id", id);
     load();
   };
@@ -146,7 +164,38 @@ function Dashboard() {
       setInfo(error.message);
     } else {
       setInfo("Admin: Pomyślnie zmieniono osobę!");
-      load(); // Odświeża kalendarz, żeby od razu pokazać zmianę
+      load(); 
+    }
+  };
+
+  const adminSaveNote = async (dateStr: string, noteText: string) => {
+    const { error } = await supabase
+      .from("assignments")
+      .update({ note: noteText })
+      .eq("date", dateStr);
+
+    if (error) {
+      setInfo(error.message);
+    } else {
+      setInfo("Admin: Notatka została pomyślnie zapisana!");
+      load();
+    }
+  };
+
+  const takeOverShift = async (dateStr: string) => {
+    if (!user) return; 
+    if (!window.confirm("Czy na pewno chcesz przejąć ten dyżur?")) return;
+
+    const { error } = await supabase
+      .from("assignments")
+      .update({ user_id: user.id }) 
+      .eq("date", dateStr);
+
+    if (error) {
+      setInfo(error.message);
+    } else {
+      setInfo("Pomyślnie przejąłeś dyżur!");
+      load(); 
     }
   };
 
@@ -250,26 +299,65 @@ function Dashboard() {
       {selectedDate && !pickingSwapFor && (
         <div className="bg-card border border-border rounded-xl p-4">
           <div className="text-sm text-muted-foreground">{selectedDate}</div>
+          
           {isAdmin ? (
-            <div className="mt-2">
-              <select
-                value={selectedAssignee ?? ""}
-                onChange={(e) => adminForceOverride(selectedDate, e.target.value)}
-                className="bg-input text-foreground p-2 rounded-md border border-border text-sm w-full focus:ring-1 focus:ring-ring"
+            <div className="mt-2 space-y-3">
+              <div>
+                <label className="text-xs text-muted-foreground block font-medium mb-1">Przypisana osoba:</label>
+                <select
+                  value={selectedAssignee ?? ""}
+                  onChange={(e) => adminForceOverride(selectedDate, e.target.value)}
+                  className="bg-input text-foreground p-2 rounded-md border border-border text-sm w-full focus:outline-none focus:ring-1 focus:ring-ring"
+                >
+                  <option value="" disabled>{t.notAssigned}</option>
+                  {profiles.map(p => (
+                    <option key={p.id} value={p.id}>{p.display_name}</option>
+                  ))}
+                </select>
+              </div>
+
+              <div>
+                <label className="text-xs text-muted-foreground block font-medium mb-1">Dodatkowe zadania na ten dzień:</label>
+                <textarea
+                  value={noteInput}
+                  onChange={(e) => setNoteInput(e.target.value)}
+                  placeholder="np. Umyć lodówkę, wyrzucić śmieci..."
+                  className="bg-input text-foreground p-2 rounded-md border border-border text-sm w-full min-h-[70px] focus:outline-none focus:ring-1 focus:ring-ring resize-none"
+                />
+              </div>
+
+              <button
+                onClick={() => adminSaveNote(selectedDate, noteInput)}
+                className="w-full py-2 rounded-md bg-primary text-primary-foreground text-xs font-semibold hover:opacity-90 transition-opacity"
               >
-                <option value="" disabled>{t.notAssigned}</option>
-                {profiles.map(p => (
-                  <option key={p.id} value={p.id}>{p.display_name}</option>
-                ))}
-              </select>
+                Zapisz instrukcje
+              </button>
             </div>
           ) : (
-            <div className="font-medium mt-0.5">
-              {selectedAssignee
-                ? `${selectedIsMine ? t.youAreAssigned : (profMap.get(selectedAssignee) ?? "?")}`
-                : t.notAssigned}
+            <div className="mt-0.5 space-y-2">
+              <div className="font-medium">
+                {selectedAssignee
+                  ? `${selectedIsMine ? t.youAreAssigned : (profMap.get(selectedAssignee) ?? "?")}`
+                  : t.notAssigned}
+              </div>
+              
+              {assignments.find(a => a.date === selectedDate)?.note && (
+                <div className="text-xs bg-warning/10 border border-warning/30 rounded-md p-2 text-warning mt-1">
+                  <strong>Ważne:</strong> {assignments.find(a => a.date === selectedDate)?.note}
+                </div>
+              )}
+
+              {!selectedIsMine && selectedAssignee && (
+                <button
+                  onClick={() => takeOverShift(selectedDate)}
+                  className="mt-2 w-full bg-secondary hover:bg-accent text-foreground font-medium p-2 rounded-md text-sm transition-colors"
+                >
+                  Przejmij ten dyżur
+                </button>
+              )}
             </div>
           )}
+
           {selectedIsMine && (
             <div className="mt-3 flex flex-wrap gap-2">
               <button
@@ -356,6 +444,31 @@ function Dashboard() {
           )}
         </Panel>
       </div>
+
+      {activeNotePopup && (
+        <div className="fixed inset-0 z-50 bg-black/85 backdrop-blur-md flex items-center justify-center p-4">
+          <div className="bg-destructive/10 border-2 border-destructive rounded-xl shadow-2xl max-w-md w-full overflow-hidden p-6 text-center animate-in fade-in zoom-in duration-200">
+            <div className="text-4xl mb-2">⚠️</div>
+            <h2 className="text-xl font-black text-destructive uppercase tracking-wider">
+              Dodatkowe zadanie od admina!
+            </h2>
+            <p className="text-xs text-muted-foreground mt-1">
+              Masz specjalne instrukcje na dzień <span className="font-bold text-foreground">{activeNotePopup.date}</span>:
+            </p>
+            
+            <div className="my-4 p-4 bg-background/90 border border-border rounded-lg text-left font-semibold text-md text-foreground whitespace-pre-wrap shadow-inner">
+              {activeNotePopup.note}
+            </div>
+            
+            <button 
+              onClick={() => setActiveNotePopup(null)}
+              className="w-full py-2.5 rounded-md bg-destructive text-destructive-foreground font-bold text-sm hover:opacity-90 transition active:scale-[0.98]"
+            >
+              ROZUMIEM, OGARNĘ TO!
+            </button>
+          </div>
+        </div>
+      )}
     </div>
   );
 }
