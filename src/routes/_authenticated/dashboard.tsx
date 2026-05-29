@@ -20,8 +20,7 @@ type Assignment = { date: string; user_id: string };
 type Profile = { id: string; display_name: string };
 
 function Dashboard() {
-  const { user, profile } = useAuth();
-  const { t, lang } = useI18n();
+  const { user, profile, isAdmin } = useAuth();  const { t, lang } = useI18n();
   const [monthAnchor, setMonthAnchor] = useState(() => new Date());
   const [assignments, setAssignments] = useState<Assignment[]>([]);
   const [profiles, setProfiles] = useState<Profile[]>([]);
@@ -137,6 +136,20 @@ function Dashboard() {
     load();
   };
 
+  const adminForceOverride = async (dateStr: string, newUserId: string) => {
+    const { error } = await supabase
+      .from("assignments")
+      .update({ user_id: newUserId })
+      .eq("date", dateStr);
+
+    if (error) {
+      setInfo(error.message);
+    } else {
+      setInfo("Admin: Pomyślnie zmieniono osobę!");
+      load(); // Odświeża kalendarz, żeby od razu pokazać zmianę
+    }
+  };
+
   const monthLabel = `${t.months[monthAnchor.getMonth()]} ${monthAnchor.getFullYear()}`;
   const today = new Date();
 
@@ -237,11 +250,26 @@ function Dashboard() {
       {selectedDate && !pickingSwapFor && (
         <div className="bg-card border border-border rounded-xl p-4">
           <div className="text-sm text-muted-foreground">{selectedDate}</div>
-          <div className="font-medium mt-0.5">
-            {selectedAssignee
-              ? `${selectedIsMine ? t.youAreAssigned : (profMap.get(selectedAssignee) ?? "?")}`
-              : t.notAssigned}
-          </div>
+          {isAdmin ? (
+            <div className="mt-2">
+              <select
+                value={selectedAssignee ?? ""}
+                onChange={(e) => adminForceOverride(selectedDate, e.target.value)}
+                className="bg-input text-foreground p-2 rounded-md border border-border text-sm w-full focus:ring-1 focus:ring-ring"
+              >
+                <option value="" disabled>{t.notAssigned}</option>
+                {profiles.map(p => (
+                  <option key={p.id} value={p.id}>{p.display_name}</option>
+                ))}
+              </select>
+            </div>
+          ) : (
+            <div className="font-medium mt-0.5">
+              {selectedAssignee
+                ? `${selectedIsMine ? t.youAreAssigned : (profMap.get(selectedAssignee) ?? "?")}`
+                : t.notAssigned}
+            </div>
+          )}
           {selectedIsMine && (
             <div className="mt-3 flex flex-wrap gap-2">
               <button

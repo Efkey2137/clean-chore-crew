@@ -131,6 +131,7 @@ function AdminPage() {
     }
   };
 
+
   const respondBuyout = async (id: string, accept: boolean) => {
     const req = buyouts.find((b) => b.id === id);
     if (!req) return;
