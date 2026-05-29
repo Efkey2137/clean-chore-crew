@@ -1,0 +1,355 @@
+import { createFileRoute } from "@tanstack/react-router";
+import { useEffect, useMemo, useState, useCallback } from "react";
+import { useAuth } from "@/lib/auth";
+import { useI18n } from "@/lib/i18n";
+import { supabase } from "@/integrations/supabase/client";
+import {
+  addDays,
+  buildCalendarGrid,
+  fromISODate,
+  isSameDay,
+  toISODate,
+} from "@/lib/dateUtils";
+import { swapAssignments } from "@/lib/schedule";
+
+export const Route = createFileRoute("/_authenticated/dashboard")({
+  component: Dashboard,
+});
+
+type Assignment = { date: string; user_id: string };
+type Profile = { id: string; display_name: string };
+
+function Dashboard() {
+  const { user, profile } = useAuth();
+  const { t, lang } = useI18n();
+  const [monthAnchor, setMonthAnchor] = useState(() => new Date());
+  const [assignments, setAssignments] = useState<Assignment[]>([]);
+  const [profiles, setProfiles] = useState<Profile[]>([]);
+  const [selectedDate, setSelectedDate] = useState<string | null>(null);
+  const [pickingSwapFor, setPickingSwapFor] = useState<string | null>(null);
+  const [mySwapRequests, setMySwapRequests] = useState<any[]>([]);
+  const [incomingSwaps, setIncomingSwaps] = useState<any[]>([]);
+  const [info, setInfo] = useState<string | null>(null);
+
+  const grid = useMemo(() => buildCalendarGrid(monthAnchor), [monthAnchor]);
+  const rangeStart = grid[0];
+  const rangeEnd = grid[grid.length - 1];
+
+  const load = useCallback(async () => {
+    const [{ data: assigns }, { data: profs }, { data: outgoing }, { data: incoming }] = await Promise.all([
+      supabase
+        .from("assignments")
+        .select("date,user_id")
+        .gte("date", toISODate(rangeStart))
+        .lte("date", toISODate(rangeEnd)),
+      supabase.from("profiles").select("id, display_name"),
+      supabase
+        .from("swap_requests")
+        .select("id, target_id, requester_date, target_date, status")
+        .eq("requester_id", user!.id)
+        .order("created_at", { ascending: false }),
+      supabase
+        .from("swap_requests")
+        .select("id, requester_id, requester_date, target_date, status")
+        .eq("target_id", user!.id)
+        .eq("status", "pending"),
+    ]);
+    setAssignments(assigns ?? []);
+    setProfiles(profs ?? []);
+    setMySwapRequests(outgoing ?? []);
+    setIncomingSwaps(incoming ?? []);
+  }, [rangeStart, rangeEnd, user]);
+
+  useEffect(() => {
+    load();
+  }, [load]);
+
+  const profMap = useMemo(() => new Map(profiles.map((p) => [p.id, p.display_name])), [profiles]);
+  const assignMap = useMemo(() => new Map(assignments.map((a) => [a.date, a.user_id])), [assignments]);
+
+  const myUpcoming = useMemo(() => {
+    const today = toISODate(new Date());
+    return assignments
+      .filter((a) => a.user_id === user!.id && a.date >= today)
+      .sort((a, b) => a.date.localeCompare(b.date))
+      .slice(0, 8);
+  }, [assignments, user]);
+
+  const handleDayClick = (d: Date) => {
+    const iso = toISODate(d);
+    if (pickingSwapFor) {
+      const targetUser = assignMap.get(iso);
+      if (!targetUser || targetUser === user!.id) {
+        setInfo("Pick a day belonging to another person.");
+        return;
+      }
+      (async () => {
+        const { error } = await supabase.from("swap_requests").insert({
+          requester_id: user!.id,
+          target_id: targetUser,
+          requester_date: pickingSwapFor,
+          target_date: iso,
+        });
+        if (error) setInfo(error.message);
+        else {
+          setInfo(t.requestSentSwap);
+          setPickingSwapFor(null);
+          setSelectedDate(null);
+          load();
+        }
+      })();
+      return;
+    }
+    setSelectedDate(iso);
+  };
+
+  const selectedAssignee = selectedDate ? assignMap.get(selectedDate) : undefined;
+  const selectedIsMine = selectedAssignee === user?.id;
+
+  const requestBuyout = async () => {
+    if (!selectedDate) return;
+    const { error } = await supabase.from("buyout_requests").insert({
+      requester_id: user!.id,
+      date: selectedDate,
+    });
+    if (error) setInfo(error.message);
+    else {
+      setInfo(t.requestSentBuyout);
+      setSelectedDate(null);
+    }
+  };
+
+  const respondSwap = async (id: string, accept: boolean) => {
+    const req = incomingSwaps.find((s) => s.id === id);
+    if (!req) return;
+    if (accept) {
+      try {
+        await swapAssignments(req.requester_date, req.target_date);
+      } catch (e: any) {
+        setInfo(e.message);
+        return;
+      }
+    }
+    await supabase
+      .from("swap_requests")
+      .update({ status: accept ? "accepted" : "rejected", resolved_at: new Date().toISOString() })
+      .eq("id", id);
+    load();
+  };
+
+  const monthLabel = `${t.months[monthAnchor.getMonth()]} ${monthAnchor.getFullYear()}`;
+  const today = new Date();
+
+  return (
+    <div className="mx-auto max-w-6xl px-4 py-6 space-y-6">
+      <div>
+        <h1 className="text-xl font-semibold">
+          {t.dashboard} · <span className="text-muted-foreground font-normal">{profile?.display_name}</span>
+        </h1>
+      </div>
+
+      <div className="bg-card border border-border rounded-xl overflow-hidden">
+        <div className="flex items-center justify-between px-4 py-3 border-b border-border">
+          <div className="flex items-center gap-2">
+            <button
+              onClick={() => setMonthAnchor(new Date(monthAnchor.getFullYear(), monthAnchor.getMonth() - 1, 1))}
+              className="px-2 py-1 rounded-md hover:bg-secondary"
+              aria-label={t.prev}
+            >
+              ‹
+            </button>
+            <button
+              onClick={() => setMonthAnchor(new Date())}
+              className="px-3 py-1 text-xs rounded-md hover:bg-secondary"
+            >
+              {t.today}
+            </button>
+            <button
+              onClick={() => setMonthAnchor(new Date(monthAnchor.getFullYear(), monthAnchor.getMonth() + 1, 1))}
+              className="px-2 py-1 rounded-md hover:bg-secondary"
+              aria-label={t.next}
+            >
+              ›
+            </button>
+          </div>
+          <div className="font-medium">{monthLabel}</div>
+          <div className="text-xs text-muted-foreground hidden sm:block">{lang.toUpperCase()}</div>
+        </div>
+
+        <div className="grid grid-cols-7 text-xs text-muted-foreground border-b border-border">
+          {t.weekdays.map((d) => (
+            <div key={d} className="px-2 py-2 text-center">{d}</div>
+          ))}
+        </div>
+        <div className="grid grid-cols-7">
+          {grid.map((d, i) => {
+            const iso = toISODate(d);
+            const uid = assignMap.get(iso);
+            const isMine = uid === user?.id;
+            const isOtherMonth = d.getMonth() !== monthAnchor.getMonth();
+            const isToday = isSameDay(d, today);
+            const isSelected = iso === selectedDate;
+            const isPickTarget = pickingSwapFor && uid && uid !== user!.id;
+            const name = uid ? profMap.get(uid) ?? "?" : null;
+            return (
+              <button
+                key={i}
+                onClick={() => handleDayClick(d)}
+                className={[
+                  "h-20 sm:h-24 border-b border-r border-border p-1.5 text-left flex flex-col gap-1 transition relative",
+                  isOtherMonth ? "opacity-40" : "",
+                  isSelected ? "ring-2 ring-primary ring-inset" : "",
+                  isMine ? "bg-mine/25 hover:bg-mine/35" : "hover:bg-secondary/60",
+                  isPickTarget ? "outline outline-1 outline-warning/60" : "",
+                ].join(" ")}
+              >
+                <div className="flex items-center justify-between">
+                  <span className={`text-xs ${isToday ? "bg-primary text-primary-foreground rounded-full w-5 h-5 inline-flex items-center justify-center" : "text-muted-foreground"}`}>
+                    {d.getDate()}
+                  </span>
+                  {isMine && <span className="text-[10px] uppercase tracking-wide text-mine-foreground bg-mine/70 px-1 rounded">{t.me}</span>}
+                </div>
+                {name && (
+                  <div className="text-xs leading-tight font-medium truncate" title={name}>
+                    {name}
+                  </div>
+                )}
+              </button>
+            );
+          })}
+        </div>
+      </div>
+
+      {info && (
+        <div className="text-sm bg-accent/40 border border-accent rounded-md px-3 py-2 flex items-center justify-between">
+          <span>{info}</span>
+          <button onClick={() => setInfo(null)} className="text-muted-foreground">×</button>
+        </div>
+      )}
+
+      {pickingSwapFor && (
+        <div className="bg-warning/15 border border-warning/40 text-warning rounded-md px-3 py-2 text-sm flex items-center justify-between">
+          <span>{t.selectSwapTarget} ({pickingSwapFor})</span>
+          <button onClick={() => setPickingSwapFor(null)} className="underline">{t.cancel}</button>
+        </div>
+      )}
+
+      {selectedDate && !pickingSwapFor && (
+        <div className="bg-card border border-border rounded-xl p-4">
+          <div className="text-sm text-muted-foreground">{selectedDate}</div>
+          <div className="font-medium mt-0.5">
+            {selectedAssignee
+              ? `${selectedIsMine ? t.youAreAssigned : (profMap.get(selectedAssignee) ?? "?")}`
+              : t.notAssigned}
+          </div>
+          {selectedIsMine && (
+            <div className="mt-3 flex flex-wrap gap-2">
+              <button
+                onClick={() => {
+                  setPickingSwapFor(selectedDate);
+                  setSelectedDate(null);
+                }}
+                className="px-3 py-1.5 rounded-md bg-primary text-primary-foreground text-sm font-medium"
+              >
+                {t.requestSwap}
+              </button>
+              <button
+                onClick={requestBuyout}
+                className="px-3 py-1.5 rounded-md bg-secondary text-secondary-foreground text-sm"
+              >
+                {t.requestBuyout}
+              </button>
+            </div>
+          )}
+        </div>
+      )}
+
+      <div className="grid sm:grid-cols-2 gap-4">
+        <Panel title={t.yourShifts}>
+          {myUpcoming.length === 0 ? (
+            <div className="text-sm text-muted-foreground">{t.none}</div>
+          ) : (
+            <ul className="space-y-1 text-sm">
+              {myUpcoming.map((a) => (
+                <li key={a.date} className="flex items-center justify-between border-b border-border/60 pb-1 last:border-0">
+                  <span>{a.date}</span>
+                  <span className="text-muted-foreground">{fromISODate(a.date).toLocaleDateString(lang === "pl" ? "pl-PL" : "en-US", { weekday: "long" })}</span>
+                </li>
+              ))}
+            </ul>
+          )}
+        </Panel>
+
+        <Panel title={t.incomingSwaps}>
+          {incomingSwaps.length === 0 ? (
+            <div className="text-sm text-muted-foreground">{t.none}</div>
+          ) : (
+            <ul className="space-y-2">
+              {incomingSwaps.map((s) => (
+                <li key={s.id} className="text-sm border border-border rounded-md p-2">
+                  <div>
+                    <span className="font-medium">{profMap.get(s.requester_id) ?? "?"}</span>
+                    : {s.requester_date} ↔ {s.target_date}
+                  </div>
+                  <div className="mt-2 flex gap-2">
+                    <button
+                      onClick={() => respondSwap(s.id, true)}
+                      className="px-2 py-1 rounded bg-success text-success-foreground text-xs font-medium"
+                    >
+                      {t.accept}
+                    </button>
+                    <button
+                      onClick={() => respondSwap(s.id, false)}
+                      className="px-2 py-1 rounded bg-destructive text-destructive-foreground text-xs font-medium"
+                    >
+                      {t.reject}
+                    </button>
+                  </div>
+                </li>
+              ))}
+            </ul>
+          )}
+        </Panel>
+
+        <Panel title={t.yourSwapRequests}>
+          {mySwapRequests.length === 0 ? (
+            <div className="text-sm text-muted-foreground">{t.none}</div>
+          ) : (
+            <ul className="space-y-1 text-sm">
+              {mySwapRequests.slice(0, 8).map((s) => (
+                <li key={s.id} className="flex items-center justify-between border-b border-border/60 pb-1 last:border-0">
+                  <span>
+                    {s.requester_date} ↔ {s.target_date}
+                  </span>
+                  <StatusBadge status={s.status} />
+                </li>
+              ))}
+            </ul>
+          )}
+        </Panel>
+      </div>
+    </div>
+  );
+}
+
+function Panel({ title, children }: { title: string; children: React.ReactNode }) {
+  return (
+    <div className="bg-card border border-border rounded-xl p-4">
+      <h3 className="font-medium mb-3">{title}</h3>
+      {children}
+    </div>
+  );
+}
+
+function StatusBadge({ status }: { status: string }) {
+  const { t } = useI18n();
+  const map: Record<string, { text: string; cls: string }> = {
+    pending: { text: t.statusPending, cls: "bg-warning/20 text-warning border-warning/40" },
+    accepted: { text: t.statusAccepted, cls: "bg-success/20 text-success border-success/40" },
+    rejected: { text: t.statusRejected, cls: "bg-destructive/20 text-destructive border-destructive/40" },
+  };
+  const v = map[status] ?? map.pending;
+  return <span className={`text-[10px] uppercase tracking-wide border rounded px-1.5 py-0.5 ${v.cls}`}>{v.text}</span>;
+}
+
+void addDays;
