@@ -14,16 +14,172 @@ export type Database = {
   }
   public: {
     Tables: {
-      [_ in never]: never
+      assignments: {
+        Row: {
+          date: string
+          updated_at: string
+          user_id: string
+        }
+        Insert: {
+          date: string
+          updated_at?: string
+          user_id: string
+        }
+        Update: {
+          date?: string
+          updated_at?: string
+          user_id?: string
+        }
+        Relationships: []
+      }
+      buyout_requests: {
+        Row: {
+          created_at: string
+          date: string
+          id: string
+          requester_id: string
+          resolved_at: string | null
+          resolved_by: string | null
+          seen_by_requester: boolean
+          status: Database["public"]["Enums"]["request_status"]
+        }
+        Insert: {
+          created_at?: string
+          date: string
+          id?: string
+          requester_id: string
+          resolved_at?: string | null
+          resolved_by?: string | null
+          seen_by_requester?: boolean
+          status?: Database["public"]["Enums"]["request_status"]
+        }
+        Update: {
+          created_at?: string
+          date?: string
+          id?: string
+          requester_id?: string
+          resolved_at?: string | null
+          resolved_by?: string | null
+          seen_by_requester?: boolean
+          status?: Database["public"]["Enums"]["request_status"]
+        }
+        Relationships: []
+      }
+      profiles: {
+        Row: {
+          created_at: string
+          display_name: string
+          email: string
+          id: string
+        }
+        Insert: {
+          created_at?: string
+          display_name: string
+          email: string
+          id: string
+        }
+        Update: {
+          created_at?: string
+          display_name?: string
+          email?: string
+          id?: string
+        }
+        Relationships: []
+      }
+      roster_members: {
+        Row: {
+          active: boolean
+          created_at: string
+          id: string
+          position: number
+          user_id: string
+        }
+        Insert: {
+          active?: boolean
+          created_at?: string
+          id?: string
+          position: number
+          user_id: string
+        }
+        Update: {
+          active?: boolean
+          created_at?: string
+          id?: string
+          position?: number
+          user_id?: string
+        }
+        Relationships: []
+      }
+      swap_requests: {
+        Row: {
+          created_at: string
+          id: string
+          requester_date: string
+          requester_id: string
+          resolved_at: string | null
+          seen_by_requester: boolean
+          status: Database["public"]["Enums"]["request_status"]
+          target_date: string
+          target_id: string
+        }
+        Insert: {
+          created_at?: string
+          id?: string
+          requester_date: string
+          requester_id: string
+          resolved_at?: string | null
+          seen_by_requester?: boolean
+          status?: Database["public"]["Enums"]["request_status"]
+          target_date: string
+          target_id: string
+        }
+        Update: {
+          created_at?: string
+          id?: string
+          requester_date?: string
+          requester_id?: string
+          resolved_at?: string | null
+          seen_by_requester?: boolean
+          status?: Database["public"]["Enums"]["request_status"]
+          target_date?: string
+          target_id?: string
+        }
+        Relationships: []
+      }
+      user_roles: {
+        Row: {
+          id: string
+          role: Database["public"]["Enums"]["app_role"]
+          user_id: string
+        }
+        Insert: {
+          id?: string
+          role: Database["public"]["Enums"]["app_role"]
+          user_id: string
+        }
+        Update: {
+          id?: string
+          role?: Database["public"]["Enums"]["app_role"]
+          user_id?: string
+        }
+        Relationships: []
+      }
     }
     Views: {
       [_ in never]: never
     }
     Functions: {
-      [_ in never]: never
+      has_role: {
+        Args: {
+          _role: Database["public"]["Enums"]["app_role"]
+          _user_id: string
+        }
+        Returns: boolean
+      }
     }
     Enums: {
-      [_ in never]: never
+      app_role: "admin" | "user"
+      request_status: "pending" | "accepted" | "rejected"
     }
     CompositeTypes: {
       [_ in never]: never
@@ -150,6 +306,9 @@ export type CompositeTypes<
 
 export const Constants = {
   public: {
-    Enums: {},
+    Enums: {
+      app_role: ["admin", "user"],
+      request_status: ["pending", "accepted", "rejected"],
+    },
   },
 } as const
