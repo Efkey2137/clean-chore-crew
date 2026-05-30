@@ -17,21 +17,21 @@ export type Database = {
       assignments: {
         Row: {
           date: string
+          note: string | null
           updated_at: string
           user_id: string
-          note: string | null
         }
         Insert: {
           date: string
+          note?: string | null
           updated_at?: string
           user_id: string
-          note?: string | null
         }
         Update: {
           date?: string
+          note?: string | null
           updated_at?: string
           user_id?: string
-          note?: string | null
         }
         Relationships: []
       }
