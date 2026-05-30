@@ -24,9 +24,9 @@ export function registerPWA() {
     return;
   }
 
-  import("virtual:pwa-register")
-    .then(({ registerSW }) => {
-      registerSW({ immediate: true });
+  import(/* @vite-ignore */ "virtual:pwa-register")
+    .then((mod: { registerSW: (opts?: { immediate?: boolean }) => void }) => {
+      mod.registerSW({ immediate: true });
     })
     .catch(() => {
       // virtual module only exists in production build
