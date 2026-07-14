@@ -141,6 +141,28 @@ useEffect(() => {
     }
   };
 
+  const requestTransfer = async () => {
+    if (!selectedDate || !transferTarget) return;
+    if (transferTarget === user!.id) {
+      setInfo("Cannot transfer to yourself.");
+      return;
+    }
+    const { error } = await supabase.from("swap_requests").insert({
+      requester_id: user!.id,
+      target_id: transferTarget,
+      requester_date: selectedDate,
+      target_date: null,
+    });
+    if (error) setInfo(error.message);
+    else {
+      setInfo(t.requestSentSwap);
+      setTransferTarget("");
+      setSelectedDate(null);
+      load();
+    }
+  };
+
+
   const respondSwap = async (id: string, accept: boolean) => {
     if (accept) {
       const { error } = await supabase.rpc("accept_swap_request", { _swap_id: id });
