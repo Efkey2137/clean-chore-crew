@@ -315,10 +315,14 @@ useEffect(() => {
                   className="bg-input text-foreground p-2 rounded-md border border-border text-sm w-full focus:outline-none focus:ring-1 focus:ring-ring"
                 >
                   <option value="" disabled>{t.notAssigned}</option>
-                  {profiles.map(p => (
-                    <option key={p.id} value={p.id}>{p.display_name}</option>
-                  ))}
+                  {profiles
+                    .filter((p) => roster.some((r) => r.user_id === p.id))
+                    .map((p) => (
+                      <option key={p.id} value={p.id}>{p.display_name}</option>
+                    ))}
                 </select>
+                <p className="text-[10px] text-muted-foreground mt-1">{t.assignAndRotate} · {t.rosterOnly}</p>
+
               </div>
 
               <div>
