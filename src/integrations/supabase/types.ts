@@ -122,7 +122,7 @@ export type Database = {
           resolved_at: string | null
           seen_by_requester: boolean
           status: Database["public"]["Enums"]["request_status"]
-          target_date: string
+          target_date: string | null
           target_id: string
         }
         Insert: {
@@ -133,7 +133,7 @@ export type Database = {
           resolved_at?: string | null
           seen_by_requester?: boolean
           status?: Database["public"]["Enums"]["request_status"]
-          target_date: string
+          target_date?: string | null
           target_id: string
         }
         Update: {
@@ -144,7 +144,7 @@ export type Database = {
           resolved_at?: string | null
           seen_by_requester?: boolean
           status?: Database["public"]["Enums"]["request_status"]
-          target_date?: string
+          target_date?: string | null
           target_id?: string
         }
         Relationships: []
@@ -172,6 +172,11 @@ export type Database = {
       [_ in never]: never
     }
     Functions: {
+      accept_swap_request: { Args: { _swap_id: string }; Returns: undefined }
+      admin_assign_and_rotate: {
+        Args: { _date: string; _days?: number; _user: string }
+        Returns: undefined
+      }
       has_role: {
         Args: {
           _role: Database["public"]["Enums"]["app_role"]
