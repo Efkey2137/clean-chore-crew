@@ -405,9 +405,37 @@ useEffect(() => {
                 className="px-3 py-1.5 rounded-md bg-secondary text-secondary-foreground text-sm"
               >
                 {t.requestBuyout}
-              </button>
             </div>
           )}
+
+          {selectedIsMine && (
+            <div className="mt-3 border-t border-border/60 pt-3">
+              <label className="text-xs text-muted-foreground block font-medium mb-1">{t.giveShift}</label>
+              <div className="flex gap-2">
+                <select
+                  value={transferTarget}
+                  onChange={(e) => setTransferTarget(e.target.value)}
+                  className="flex-1 bg-input text-foreground p-2 rounded-md border border-border text-sm focus:outline-none focus:ring-1 focus:ring-ring"
+                >
+                  <option value="">{t.pickUser}</option>
+                  {profiles
+                    .filter((p) => p.id !== user!.id)
+                    .map((p) => (
+                      <option key={p.id} value={p.id}>{p.display_name}</option>
+                    ))}
+                </select>
+                <button
+                  onClick={requestTransfer}
+                  disabled={!transferTarget}
+                  className="px-3 py-1.5 rounded-md bg-primary text-primary-foreground text-sm font-medium disabled:opacity-50"
+                >
+                  {t.send ?? "Send"}
+                </button>
+              </div>
+              <p className="text-[10px] text-muted-foreground mt-1">{t.giveShiftHint}</p>
+            </div>
+          )}
+
         </div>
       )}
 
