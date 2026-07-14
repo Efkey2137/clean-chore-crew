@@ -18,6 +18,8 @@ export const Route = createFileRoute("/_authenticated/dashboard")({
 
 type Assignment = { date: string; user_id: string; note?: string | null };
 type Profile = { id: string; display_name: string };
+type Roster = { user_id: string };
+
 
 function Dashboard() {
   const { user, profile, isAdmin } = useAuth();
@@ -25,11 +27,14 @@ function Dashboard() {
   const [monthAnchor, setMonthAnchor] = useState(() => new Date());
   const [assignments, setAssignments] = useState<Assignment[]>([]);
   const [profiles, setProfiles] = useState<Profile[]>([]);
+  const [roster, setRoster] = useState<Roster[]>([]);
   const [selectedDate, setSelectedDate] = useState<string | null>(null);
   const [pickingSwapFor, setPickingSwapFor] = useState<string | null>(null);
+  const [transferTarget, setTransferTarget] = useState<string>("");
   const [mySwapRequests, setMySwapRequests] = useState<any[]>([]);
   const [incomingSwaps, setIncomingSwaps] = useState<any[]>([]);
   const [info, setInfo] = useState<string | null>(null);
+
   
   // Stany dla notatek
   const [noteInput, setNoteInput] = useState("");
@@ -40,13 +45,14 @@ function Dashboard() {
   const rangeEnd = grid[grid.length - 1];
 
   const load = useCallback(async () => {
-    const [{ data: assigns }, { data: profs }, { data: outgoing }, { data: incoming }] = await Promise.all([
+    const [{ data: assigns }, { data: profs }, { data: ros }, { data: outgoing }, { data: incoming }] = await Promise.all([
       supabase
         .from("assignments")
-        .select("date,user_id,note") 
+        .select("date,user_id,note")
         .gte("date", toISODate(rangeStart))
         .lte("date", toISODate(rangeEnd)),
-      supabase.from("profiles").select("id, display_name"),
+      supabase.from("profiles").select("id, display_name").order("display_name"),
+      supabase.from("roster_members").select("user_id").eq("active", true).order("position"),
       supabase
         .from("swap_requests")
         .select("id, target_id, requester_date, target_date, status")
@@ -60,9 +66,11 @@ function Dashboard() {
     ]);
     setAssignments(assigns ?? []);
     setProfiles(profs ?? []);
+    setRoster(ros ?? []);
     setMySwapRequests(outgoing ?? []);
     setIncomingSwaps(incoming ?? []);
   }, [rangeStart, rangeEnd, user]);
+
 
   useEffect(() => {
     load();
@@ -133,40 +141,59 @@ useEffect(() => {
     }
   };
 
+  const requestTransfer = async () => {
+    if (!selectedDate || !transferTarget) return;
+    if (transferTarget === user!.id) {
+      setInfo("Cannot transfer to yourself.");
+      return;
+    }
+    const { error } = await supabase.from("swap_requests").insert({
+      requester_id: user!.id,
+      target_id: transferTarget,
+      requester_date: selectedDate,
+      target_date: null,
+    });
+    if (error) setInfo(error.message);
+    else {
+      setInfo(t.requestSentSwap);
+      setTransferTarget("");
+      setSelectedDate(null);
+      load();
+    }
+  };
+
+
   const respondSwap = async (id: string, accept: boolean) => {
-    const req = incomingSwaps.find((s) => s.id === id);
-    if (!req) return;
     if (accept) {
-      try {
-        await swapAssignments(req.requester_date, req.target_date);
-      } catch (e: any) {
-        setInfo(e.message);
+      const { error } = await supabase.rpc("accept_swap_request", { _swap_id: id });
+      if (error) {
+        setInfo(error.message);
         return;
       }
+    } else {
+      await supabase
+        .from("swap_requests")
+        .update({ status: "rejected", resolved_at: new Date().toISOString() })
+        .eq("id", id);
     }
-    await supabase
-      .from("swap_requests")
-      .update({ 
-        status: accept ? "accepted" : "rejected", 
-        resolved_at: new Date().toISOString() 
-      })
-      .eq("id", id);
     load();
   };
 
   const adminForceOverride = async (dateStr: string, newUserId: string) => {
-    const { error } = await supabase
-      .from("assignments")
-      .update({ user_id: newUserId })
-      .eq("date", dateStr);
+    const { error } = await supabase.rpc("admin_assign_and_rotate", {
+      _date: dateStr,
+      _user: newUserId,
+      _days: 60,
+    });
 
     if (error) {
       setInfo(error.message);
     } else {
-      setInfo("Admin: Pomyślnie zmieniono osobę!");
-      load(); 
+      setInfo("Admin: Przypisano i zaktualizowano grafik od tego dnia.");
+      load();
     }
   };
+
 
   const adminSaveNote = async (dateStr: string, noteText: string) => {
     const { error } = await supabase
@@ -310,10 +337,14 @@ useEffect(() => {
                   className="bg-input text-foreground p-2 rounded-md border border-border text-sm w-full focus:outline-none focus:ring-1 focus:ring-ring"
                 >
                   <option value="" disabled>{t.notAssigned}</option>
-                  {profiles.map(p => (
-                    <option key={p.id} value={p.id}>{p.display_name}</option>
-                  ))}
+                  {profiles
+                    .filter((p) => roster.some((r) => r.user_id === p.id))
+                    .map((p) => (
+                      <option key={p.id} value={p.id}>{p.display_name}</option>
+                    ))}
                 </select>
+                <p className="text-[10px] text-muted-foreground mt-1">{t.assignAndRotate} · {t.rosterOnly}</p>
+
               </div>
 
               <div>
@@ -376,7 +407,37 @@ useEffect(() => {
                 {t.requestBuyout}
               </button>
             </div>
+
           )}
+
+          {selectedIsMine && (
+            <div className="mt-3 border-t border-border/60 pt-3">
+              <label className="text-xs text-muted-foreground block font-medium mb-1">{t.giveShift}</label>
+              <div className="flex gap-2">
+                <select
+                  value={transferTarget}
+                  onChange={(e) => setTransferTarget(e.target.value)}
+                  className="flex-1 bg-input text-foreground p-2 rounded-md border border-border text-sm focus:outline-none focus:ring-1 focus:ring-ring"
+                >
+                  <option value="">{t.pickUser}</option>
+                  {profiles
+                    .filter((p) => p.id !== user!.id)
+                    .map((p) => (
+                      <option key={p.id} value={p.id}>{p.display_name}</option>
+                    ))}
+                </select>
+                <button
+                  onClick={requestTransfer}
+                  disabled={!transferTarget}
+                  className="px-3 py-1.5 rounded-md bg-primary text-primary-foreground text-sm font-medium disabled:opacity-50"
+                >
+                  {t.confirm}
+                </button>
+              </div>
+              <p className="text-[10px] text-muted-foreground mt-1">{t.giveShiftHint}</p>
+            </div>
+          )}
+
         </div>
       )}
 
