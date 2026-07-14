@@ -431,7 +431,7 @@ useEffect(() => {
                   disabled={!transferTarget}
                   className="px-3 py-1.5 rounded-md bg-primary text-primary-foreground text-sm font-medium disabled:opacity-50"
                 >
-                  {t.request}
+                  {t.confirm}
                 </button>
               </div>
               <p className="text-[10px] text-muted-foreground mt-1">{t.giveShiftHint}</p>
