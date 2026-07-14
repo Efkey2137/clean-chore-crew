@@ -142,39 +142,36 @@ useEffect(() => {
   };
 
   const respondSwap = async (id: string, accept: boolean) => {
-    const req = incomingSwaps.find((s) => s.id === id);
-    if (!req) return;
     if (accept) {
-      try {
-        await swapAssignments(req.requester_date, req.target_date);
-      } catch (e: any) {
-        setInfo(e.message);
+      const { error } = await supabase.rpc("accept_swap_request", { _swap_id: id });
+      if (error) {
+        setInfo(error.message);
         return;
       }
+    } else {
+      await supabase
+        .from("swap_requests")
+        .update({ status: "rejected", resolved_at: new Date().toISOString() })
+        .eq("id", id);
     }
-    await supabase
-      .from("swap_requests")
-      .update({ 
-        status: accept ? "accepted" : "rejected", 
-        resolved_at: new Date().toISOString() 
-      })
-      .eq("id", id);
     load();
   };
 
   const adminForceOverride = async (dateStr: string, newUserId: string) => {
-    const { error } = await supabase
-      .from("assignments")
-      .update({ user_id: newUserId })
-      .eq("date", dateStr);
+    const { error } = await supabase.rpc("admin_assign_and_rotate", {
+      _date: dateStr,
+      _user: newUserId,
+      _days: 60,
+    });
 
     if (error) {
       setInfo(error.message);
     } else {
-      setInfo("Admin: Pomyślnie zmieniono osobę!");
-      load(); 
+      setInfo("Admin: Przypisano i zaktualizowano grafik od tego dnia.");
+      load();
     }
   };
+
 
   const adminSaveNote = async (dateStr: string, noteText: string) => {
     const { error } = await supabase
