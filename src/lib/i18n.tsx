@@ -70,8 +70,14 @@ const dict = {
     makeAdmin: "Make Admin",
     makeUser: "Make User",
     me: "You",
+    giveShift: "Give shift to…",
+    giveShiftHint: "Send a transfer request to any user",
+    pickUser: "Pick a user",
+    assignAndRotate: "Assign & rotate from this day",
+    rosterOnly: "Roster only",
     weekdays: ["Mon", "Tue", "Wed", "Thu", "Fri", "Sat", "Sun"],
     months: ["January","February","March","April","May","June","July","August","September","October","November","December"],
+
   },
   pl: {
     appTitle: "Harmonogram Sprzątania Kuchni",
@@ -140,8 +146,14 @@ const dict = {
     makeAdmin: "Nadaj admina",
     makeUser: "Usuń admina",
     me: "Ty",
+    giveShift: "Przekaż dyżur…",
+    giveShiftHint: "Wyślij prośbę o przejęcie do dowolnego użytkownika",
+    pickUser: "Wybierz osobę",
+    assignAndRotate: "Przypisz i przesuń grafik od tego dnia",
+    rosterOnly: "Tylko z listy",
     weekdays: ["Pn", "Wt", "Śr", "Cz", "Pt", "Sb", "Nd"],
     months: ["Styczeń","Luty","Marzec","Kwiecień","Maj","Czerwiec","Lipiec","Sierpień","Wrzesień","Październik","Listopad","Grudzień"],
+
   },
 } as const;
 
