@@ -18,6 +18,8 @@ export const Route = createFileRoute("/_authenticated/dashboard")({
 
 type Assignment = { date: string; user_id: string; note?: string | null };
 type Profile = { id: string; display_name: string };
+type Roster = { user_id: string };
+
 
 function Dashboard() {
   const { user, profile, isAdmin } = useAuth();
@@ -25,11 +27,14 @@ function Dashboard() {
   const [monthAnchor, setMonthAnchor] = useState(() => new Date());
   const [assignments, setAssignments] = useState<Assignment[]>([]);
   const [profiles, setProfiles] = useState<Profile[]>([]);
+  const [roster, setRoster] = useState<Roster[]>([]);
   const [selectedDate, setSelectedDate] = useState<string | null>(null);
   const [pickingSwapFor, setPickingSwapFor] = useState<string | null>(null);
+  const [transferTarget, setTransferTarget] = useState<string>("");
   const [mySwapRequests, setMySwapRequests] = useState<any[]>([]);
   const [incomingSwaps, setIncomingSwaps] = useState<any[]>([]);
   const [info, setInfo] = useState<string | null>(null);
+
   
   // Stany dla notatek
   const [noteInput, setNoteInput] = useState("");
@@ -40,13 +45,14 @@ function Dashboard() {
   const rangeEnd = grid[grid.length - 1];
 
   const load = useCallback(async () => {
-    const [{ data: assigns }, { data: profs }, { data: outgoing }, { data: incoming }] = await Promise.all([
+    const [{ data: assigns }, { data: profs }, { data: ros }, { data: outgoing }, { data: incoming }] = await Promise.all([
       supabase
         .from("assignments")
-        .select("date,user_id,note") 
+        .select("date,user_id,note")
         .gte("date", toISODate(rangeStart))
         .lte("date", toISODate(rangeEnd)),
-      supabase.from("profiles").select("id, display_name"),
+      supabase.from("profiles").select("id, display_name").order("display_name"),
+      supabase.from("roster_members").select("user_id").eq("active", true).order("position"),
       supabase
         .from("swap_requests")
         .select("id, target_id, requester_date, target_date, status")
@@ -60,9 +66,11 @@ function Dashboard() {
     ]);
     setAssignments(assigns ?? []);
     setProfiles(profs ?? []);
+    setRoster(ros ?? []);
     setMySwapRequests(outgoing ?? []);
     setIncomingSwaps(incoming ?? []);
   }, [rangeStart, rangeEnd, user]);
+
 
   useEffect(() => {
     load();
