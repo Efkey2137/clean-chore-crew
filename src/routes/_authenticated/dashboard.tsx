@@ -405,7 +405,9 @@ useEffect(() => {
                 className="px-3 py-1.5 rounded-md bg-secondary text-secondary-foreground text-sm"
               >
                 {t.requestBuyout}
+              </button>
             </div>
+
           )}
 
           {selectedIsMine && (
